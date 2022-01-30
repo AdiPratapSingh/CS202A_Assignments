@@ -8,8 +8,11 @@ def parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description='Solves sudoku pair puzzles.')
     parser.add_argument('-k', '--k', type=int, default=2, help='k value for k-sudoku')
-    parser.add_argument('-p', '--path', type=str, default="TestCases/test_case1.csv",
+    parser.add_argument('-p', '--path', type=str, default="TestCases/test_case.csv",
                         help='Path to sudoku puzzle csv file.')
+    parser.add_argument('-o', '--outputformat', type=int, default=0, 
+                        help='0: output numbers with lines separating them, 1: output only numbers'
+                        "3: output result in a csv file named 'sudoku_soln.csv'")
     return parser.parse_args()
 
 
@@ -63,7 +66,18 @@ def add_block_constraints(k, solver, start=0):
                 solver.append_formula(cnf)
 
 
-# def add_diag_constraints(k, solver, start=0):
+def add_diag_constraints(k, solver, start=0):
+    """Adds diagonal constraints"""
+    for m in range(1,k*k+1):
+        diag_lits_1 = []
+        diag_lits_2 = []
+        for i in range(k*k):
+            diag_lits_1.append(start + i*(k**4) + i*(k**2) + m)
+            diag_lits_2.append(start + i*(k**4) + (k*k-1-i)*(k**2) + m)
+        cnf1 = CardEnc.equals(lits=diag_lits_1, bound=1, encoding=EncType.pairwise)
+        cnf2 = CardEnc.equals(lits=diag_lits_2, bound=1, encoding=EncType.pairwise)
+        solver.append_formula(cnf1)
+        solver.append_formula(cnf2)
 
 
 def add_index_pair_constraints(k, solver):
@@ -86,46 +100,51 @@ def get_assumptions(k, rows, soln, start=0):
     return assumptions
 
 
-def print_soln(k, soln):
+def print_soln(k, soln, format=0):
     """Prints the final solution"""
-    for i in range(k*k):
-        for j in range(k*k):
-            print(soln[i][j], end=" ")
-            if (j+1) % k == 0 and j != k*k-1:
-                print("|", end=" ")
-        print()
-        if (i+1) % k == 0 and i != k*k-1:
-            for j in range(2*k*k+2*k-3):
-                print('-', end="")
+    if format != 2:
+        for i in range(k*k):
+            for j in range(k*k):
+                print(soln[i][j], end=" ")
+                if not format and (j+1) % k == 0 and j != k*k-1:
+                    print("|", end=" ")
             print()
-
+            if not format and (i+1) % k == 0 and i != k*k-1:
+                for j in range(2*k*k+2*k-3):
+                    print('-', end="")
+                print()
+    else:
+        with open('sudoku_soln.csv', 'a') as file:
+            writer = csv.writer(file)
+            writer.writerows(soln)
 
 
 args = parse_args()
 k = args.k
 solver = Solver()
 
-#@ list to store solved sudoku - start with 0s
+# list to store solved sudoku - start with 0s
 sol1 = [[0 for _ in range(k*k)] for _ in range(k*k)]
 sol2 = [[0 for _ in range(k*k)] for _ in range(k*k)]
 
-#@ add constraints
+# add constraints
 add_value_constraints(k, solver)
 add_value_constraints(k, solver, start=k**6)
 add_horl_and_vert_constraints(k, solver)
 add_horl_and_vert_constraints(k, solver, start=k**6)
 add_block_constraints(k, solver)
 add_block_constraints(k, solver, start=k**6)
+add_diag_constraints(k, solver)
+add_diag_constraints(k, solver, start=k**6)
 add_index_pair_constraints(k, solver)
 
-#@ get assumptions by reading from given file
+# get assumptions by reading from given file
 rows = read_csv(args.path)
 assumptions1 = get_assumptions(k, rows[:k*k], sol1)
 assumptions2 = get_assumptions(k, rows[k*k:], sol2, start=(k**6))
 
-#@ solve the encoded problem
+# solve the encoded problem
 if solver.solve(assumptions=assumptions1 + assumptions2):
-    print("Solved")
     # get the value of each box
     for val in solver.get_model():
         if val > 0:
@@ -137,13 +156,13 @@ if solver.solve(assumptions=assumptions1 + assumptions2):
                 sol2[i][j] = m
             else:
                 sol1[i][j] = m
-    print_soln(k, sol1)
+    if args.outputformat == 2:
+        open('sudoku_soln.csv', 'w').close()  # clear/create the file first
+    print_soln(k, sol1, format=args.outputformat)
     print()
-    print_soln(k, sol2)
+    print_soln(k, sol2, format=args.outputformat)
 else:
-    print("No solution exists")
+    print("None")
 
 # delete the solver after use
 solver.delete()
-
-
