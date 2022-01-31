@@ -7,12 +7,14 @@ from pysat.solvers import Solver
 def parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description='Solves sudoku pair puzzles.')
-    parser.add_argument('-k', '--k', type=int, default=2, help='k value for k-sudoku')
-    parser.add_argument('-p', '--path', type=str, default="TestCases/test_case.csv",
+    parser.add_argument('-k', '--k', type=int, default=3, help='k value for k-sudoku')
+    parser.add_argument('-p', '--path', type=str, default="TestCases/test_case3.csv",
                         help='Path to sudoku puzzle csv file.')
-    parser.add_argument('-o', '--outputformat', type=int, default=0, 
+    parser.add_argument('-d', '--use_diag_constraints', type=int, default=1,
+                        help='Use diagonal constraints (1) or not (0).')
+    parser.add_argument('-o', '--outputformat', type=int, default=0,
                         help='0: output numbers with lines separating them, 1: output only numbers'
-                        "3: output result in a csv file named 'sudoku_soln.csv'")
+                        "2: output result in a csv file named 'sudoku_soln.csv'")
     return parser.parse_args()
 
 
@@ -110,7 +112,8 @@ def print_soln(k, soln, format=0):
                     print("|", end=" ")
             print()
             if not format and (i+1) % k == 0 and i != k*k-1:
-                for j in range(2*k*k+2*k-3):
+                rng = 2*k*k+2*k-3 + (k>3)*(k*k)
+                for j in range(rng):
                     print('-', end="")
                 print()
     else:
@@ -134,8 +137,9 @@ add_horl_and_vert_constraints(k, solver)
 add_horl_and_vert_constraints(k, solver, start=k**6)
 add_block_constraints(k, solver)
 add_block_constraints(k, solver, start=k**6)
-add_diag_constraints(k, solver)
-add_diag_constraints(k, solver, start=k**6)
+if args.use_diag_constraints:
+    add_diag_constraints(k, solver)
+    add_diag_constraints(k, solver, start=k**6)
 add_index_pair_constraints(k, solver)
 
 # get assumptions by reading from given file
@@ -153,9 +157,15 @@ if solver.solve(assumptions=assumptions1 + assumptions2):
             j = int((val-1) % (k**6) % (k**4) / (k**2))
             m = int((val-1) % (k**6) % (k**4) % (k**2) + 1)
             if a:
-                sol2[i][j] = m
+                if k > 3 and m < 10:
+                    sol2[i][j] = ' ' + str(m)
+                else:
+                    sol2[i][j] = str(m)
             else:
-                sol1[i][j] = m
+                if k > 3 and m < 10:
+                    sol1[i][j] = ' ' + str(m)
+                else:
+                    sol1[i][j] = str(m)
     if args.outputformat == 2:
         open('sudoku_soln.csv', 'w').close()  # clear/create the file first
     print_soln(k, sol1, format=args.outputformat)

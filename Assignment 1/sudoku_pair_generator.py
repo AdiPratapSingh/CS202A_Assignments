@@ -7,10 +7,14 @@ import random
 
 def parse_args():
     """Parse command line arguments"""
-    parser = argparse.ArgumentParser(description='Solves sudoku pair puzzles.')
-    parser.add_argument('-k', '--k', type=int, default=4, help='k value for k-sudoku')
+    parser = argparse.ArgumentParser(description='Generates sudoku pair puzzles.')
+    parser.add_argument('-k', '--k', type=int, default=3, help='k value for k-sudoku')
+    parser.add_argument('-d', '--use_diag_constraints', type=int, default=0,
+                        help='Use diagonal constraints (1) or not (0).')
     parser.add_argument('-p', '--path', type=str, default="TestCases/test_case.csv",
                         help='Path to store new sudoku puzzle csv file.')
+    parser.add_argument('-s', '--solnpath', type=str, default="TestCases/sol_test_case.csv",
+                        help='Path to store solution to sudoku puzzle csv file.')
     return parser.parse_args()
 
 
@@ -77,7 +81,7 @@ def add_index_pair_constraints(k, solver):
                 solver.add_clause(clause)
 
 
-def add_constraints(k, solver):
+def add_constraints(k, solver, use_diag):
     """Adds all constraints"""
     add_value_constraints(k, solver)
     add_value_constraints(k, solver, start=k**6)
@@ -85,8 +89,9 @@ def add_constraints(k, solver):
     add_horl_and_vert_constraints(k, solver, start=k**6)
     add_block_constraints(k, solver)
     add_block_constraints(k, solver, start=k**6)
-    add_diag_constraints(k, solver)
-    add_diag_constraints(k, solver, start=k**6)
+    if use_diag:
+        add_diag_constraints(k, solver)
+        add_diag_constraints(k, solver, start=k**6)
     add_index_pair_constraints(k, solver)
 
 
@@ -107,11 +112,6 @@ def fill_random(k, puzzle):
     return assumptions
 
 
-def copy_list(l1, l2):
-    """Copy list l1 to l2"""
-    for i in range(len(l1)):
-        l2[i] = l1[i][:]
-
 def decrypt_model_values(k, model, puzzle):
     """Get the value of each box"""
     for val in model:
@@ -121,17 +121,6 @@ def decrypt_model_values(k, model, puzzle):
             j = int((val-1) % (k**6) % (k**4) / (k**2))
             m = int((val-1) % (k**6) % (k**4) % (k**2) + 1)
             puzzle[i + a*k*k][j] = m
-
-
-def remove_values(k, puzzle):
-    """Remove half values from the puzzle"""
-    num_values = k**4
-    while num_values:
-        rndx = random.randint(0, 2*k*k-1)
-        rndy = random.randint(0, k*k-1)
-        if puzzle[rndx][rndy] != 0:
-            puzzle[rndx][rndy] = 0
-            num_values -= 1
 
 
 def get_assumptions(k, puzzle):
@@ -148,16 +137,14 @@ def get_assumptions(k, puzzle):
     return assumptions
 
 
-def check_uniqueness(k, puzzle):
-    """Check if the puzzle has unique solution"""
-    solver2 = Solver()
-    add_constraints(k, solver2)
+def check_uniqueness(k, puzzle, solver, x, y, val):
     assumptions = get_assumptions(k, puzzle)
-    solver2.solve(assumptions=assumptions)
-    model = solver2.get_model()
-    cnf = CardEnc.atmost(lits=model, bound=len(model)-1, encoding=EncType.pairwise)
-    solver2.append_formula(cnf)
-    if solver2.solve(assumptions=assumptions):
+    if x > k*k-1:
+        x, a = x - k*k, 1
+    else:
+        a = 0
+    assumptions.append(-(a*(k**6) + x*(k**4) + y*(k**2) + val))
+    if solver.solve(assumptions=assumptions):
         return False
     return True
 
@@ -179,7 +166,7 @@ solver = Solver()
 puzzle = [[0 for _ in range(k*k)] for _ in range(2*k*k)]
 
 # add constraints
-add_constraints(k, solver)
+add_constraints(k, solver, args.use_diag_constraints)
 
 while(True):
     puzzle = [[0 for _ in range(k*k)] for _ in range(2*k*k)]
@@ -191,15 +178,8 @@ while(True):
         decrypt_model_values(k, solver.get_model(), puzzle)
         break
 
-# remove half values such that sudoku still has unique solution
-# puzzle_bckup = [[0 for _ in range(k*k)] for _ in range(2*k*k)]
-# copy_list(puzzle, puzzle_bckup)
-# while(True):
-#     copy_list(puzzle_bckup, puzzle)
-#     remove_values(k, puzzle)
-#     assumptions = get_assumptions(k, puzzle)
-#     if check_uniqueness(k, puzzle):
-#         break
+# save solution to puzzle
+save_puzzle(args.solnpath, puzzle)
 
 # store ids of non-empty
 non_empty_cells = []
@@ -213,7 +193,7 @@ random.shuffle(non_empty_cells)
 for x,y in non_empty_cells:
     val = puzzle[x][y]
     puzzle[x][y] = 0
-    if not check_uniqueness(k, puzzle):
+    if not check_uniqueness(k, puzzle, solver, x, y, val):
         puzzle[x][y] = val
 
 # write the puzzle to a csv file
@@ -221,9 +201,3 @@ save_puzzle(args.path, puzzle)
 
 # delete the solver after use
 solver.delete()
-
-# get a random solution - done
-# start removing values from the puzzle - randomly select a non-zero valued box
-# get a solution -> model - add the atmost k*k-1 constraint for the model
-# if no soln -> got the puzzle - break
-# else -> remove the value from the puzzle and try again
