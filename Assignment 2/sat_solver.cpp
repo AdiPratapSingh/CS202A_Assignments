@@ -35,6 +35,7 @@ int simplify_and_check() {
                     (l > 0)? cnt[l].first-- : cnt[-l].second--;
                     tcnt[abs(l)]--;
                 }
+                F[abs(cl)].clear();
             }
             else {
                 if (F[abs(cl)].size() >= 2) {
@@ -60,15 +61,34 @@ int simplify_and_check() {
 }
 
 
+int unit_propagation() {
+    for (int i = 1; i <= num_clauses; i++) {
+        if (tv_clause[i] == 1)  continue;
+        if (F[i].size() == 1) {
+            I[abs(F[i][0])] = F[i][0];
+            I[0] = abs(F[i][0]);
+            tv_clause[i] = 1;
+            (F[i][0] > 0)? cnt[F[i][0]].first-- : cnt[-F[i][0]].second--;
+            tcnt[abs(F[i][0])]--;
+            int res = simplify_and_check();
+            if (res != 0) return res;
+            i = 0;
+        }
+    }
+    return 0;
+}
+
+
 bool sat() {
     // if ( I ⇒ F ) return true
     // if ( I ⇒ ¬F ) return false
     int res = simplify_and_check();
-    if (res == 1) return true;
-    if (res == -1) return false;
+    if (res != 0) return res == 1;
     
     // F,I = up(F,I)
     // if I is inconsistent return false
+    res = unit_propagation();
+    if (res != 0) return res == 1;
     
     // F,I = pure(F,I)
     // if F = ∅ return true
@@ -82,7 +102,6 @@ bool sat() {
     int xi = max_element(tcnt.begin(), tcnt.end()) - tcnt.begin();
     I[xi] = 1;      I[0] = xi;
     if (sat()) return true;
-
     F = F_bckup;    I = I_bckup;
     I[xi] = -1;     I[0] = xi;
     if (sat()) return true;
